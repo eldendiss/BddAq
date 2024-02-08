@@ -52,8 +52,9 @@ When channel is left floating (no load connected, or high impedance), it should 
 
 Maximum sampling frequency is 7 kHz, maximum PWM frequency is 562.5 kHz, maximum polarity change interval should be 65535 seconds. Duty cycle has resolution of 0.78 %
 
-Maximum measured voltage is +-60V, with 10% offset error - real range is therefore approximately +-54V. Voltage is measured at the output so it will follow polarity change interval.
-Maximum measured current is by default 10 A.
+Maximum measured voltage is +-60V, with 10% offset error - real range is therefore approximately +-54V. Voltage is measured at the output so it will follow polarity change interval.  
+Maximum measured current is by default 10 A.  
+
 Resolution of both measurements is 16 bit, that is 1.8 mV for voltage and 0.15 mA for current. However noise is a significant factor, therefore reported values will have accuracy of +- 5%, if properly calibrated.
 
 Offsets are calibrated automatically at every boot, values are mapped by predefined mapping transfer functions based on prototype device.
