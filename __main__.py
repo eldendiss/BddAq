@@ -7,7 +7,7 @@ import sys, argparse
 import threading
 from datetime import datetime
 from timscale import calculate_timer_params
-from dash import Dash,dcc,html,callback,Input,Output
+from dash import Dash,dcc,html,callback,Input,Output, State
 #use timscale.py
 
 
@@ -28,6 +28,11 @@ longTermLen = 1000
 
 ch1charge = 0
 ch2charge = 0
+
+refU1 = 0
+refU2 = 0
+refI1 = 0
+refI2 = 0
 
 # File to save data
 data_file = "received_data.csv"
@@ -76,16 +81,21 @@ def combine_bytes(high_byte, low_byte):
 def convert_current(adc_value):
     if adc_value == 0:
         return 0
-    return (adc_value + 83.785) / 6163.6
+    val = (adc_value + 83.785) / 6163.6
+    
+    #round to 2 decimal places
+    return round(val, 2)
 
 def convert_voltage(adc_value):
     
     if adc_value < 32768:
-        return (adc_value + 67.8011) / 587.1251
+        val = (adc_value + 67.8011) / 587.1251
     if adc_value > 32768:
-        return (adc_value - 65476) / 587.2795
+        val =  (adc_value - 65476) / 587.2795
     if adc_value == 32768:
-        return 0
+        val =  0
+    return round(val, 2)
+    
     
 
 def create_packet(ch1_en, ch1_polarity, ch1_pwmFreq, ch1_pwmDuty, ch2_en, ch2_polarity, ch2_pwmFreq, ch2_pwmDuty, sampleFreq):
@@ -107,11 +117,14 @@ def create_packet(ch1_en, ch1_polarity, ch1_pwmFreq, ch1_pwmDuty, ch2_en, ch2_po
 
     return packet
 
-def readAndSaveData(ser, csvfile,start_time, sampleFreq):
+def readAndSaveData(ser, csvfile,start_time, args):
     global ch1charge, ch2charge
     
     if csvfile is not None:
         csvwriter = csv.writer(csvfile)
+        #write current args to file
+        csvwriter.writerow(["Port", "CH1 Enable", "CH1 Polarity (s)", "CH1 PWM Frequency (Hz)", "CH1 PWM Duty (%)", "CH2 Enable", "CH2 Polarity (s)", "CH2 PWM Frequency (Hz)", "CH2 PWM Duty (%)", "Sample Frequency (Hz)"])
+        csvwriter.writerow([args.port, args.ch1_en, args.ch1_polarity, args.ch1_pwmFreq, args.ch1_pwmDuty, args.ch2_en, args.ch2_polarity, args.ch2_pwmFreq, args.ch2_pwmDuty, args.sampleFreq])
         csvwriter.writerow(["Timestamp", "CH1 Current (A)", "CH1 Voltage (V)", "CH1 Total charge (C)", "CH2 Current (A)", "CH2 Voltage (V)", "CH2 Total charge (C)"])
 
     try:
@@ -125,8 +138,8 @@ def readAndSaveData(ser, csvfile,start_time, sampleFreq):
 
                 elapsed_time = int((datetime.now() - start_time).total_seconds() * 1e6)
 
-                ch1charge += (1/sampleFreq)*ch1_current 
-                ch2charge += (1/sampleFreq)*ch2_current
+                ch1charge += round((1/args.sampleFreq)*ch1_current,2)
+                ch2charge += round((1/args.sampleFreq)*ch2_current,2)
                 if csvfile is not None:
                     csvwriter.writerow([elapsed_time, ch1_current, ch1_voltage, ch1charge, ch2_current, ch2_voltage, ch2charge])
                     csvfile.flush()
@@ -161,15 +174,14 @@ def readAndSaveData(ser, csvfile,start_time, sampleFreq):
 @callback(Output('ch1I', 'figure'),
           Input('interval-component', 'n_intervals'))   
 def updateCh1I(n):
-    ref = 0
-    if len(ch1ILongTerm) > 0:
-        ref = sum(ch1ILongTerm)/len(ch1ILongTerm)
+    global refI1
+    
     ch1I = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = 0,
         domain = {'x': [0, 1], 'y': [0, 1]},
         title = {'text': "CH1 Current (A)"},
-        delta = {'reference': ref},
+        delta = {'reference': refI1},
         gauge = {'axis': {'range': [None, 10]},
                  'steps' : [
                     {"range": [0, 8], "color": "#04756F"},
@@ -185,15 +197,13 @@ def updateCh1I(n):
 @callback(Output('ch1U', 'figure'),
           Input('interval-component', 'n_intervals'))   
 def updateCh1U(n):
-    ref = 0
-    if len(ch1ULongTerm) > 0:
-        ref = sum(ch1ULongTerm)/len(ch1ULongTerm)
+    global refU1
     ch1U = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = 0,
         domain = {'x': [0, 1], 'y': [0, 1]},
         title = {'text': "CH1 Voltage (V)"},
-        delta = {'reference': ref},
+        delta = {'reference': refU1},
         gauge = {'axis': {'range': [None, 60]},
                  'steps' : [
                     {"range": [0, 50], "color": "#04756F"},
@@ -209,15 +219,13 @@ def updateCh1U(n):
 @callback(Output('ch2I', 'figure'),
           Input('interval-component', 'n_intervals'))                   
 def updateCh2I(n):
-    ref = 0
-    if len(ch2ILongTerm) > 0:
-        ref = sum(ch2ILongTerm)/len(ch2ILongTerm)
+    global refI2
     ch2I = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = 0,
         domain = {'x': [0, 1], 'y': [0, 1]},
         title = {'text': "CH2 Current (A)"},
-        delta = {'reference': ref},
+        delta = {'reference': refI2},
         gauge = {'axis': {'range': [None, 10]},
                  'steps' : [
                     {"range": [0, 8], "color": "#04756F"},
@@ -233,15 +241,13 @@ def updateCh2I(n):
 @callback(Output('ch2U', 'figure'),
           Input('interval-component', 'n_intervals'))   
 def updateCh2U(n):
-    ref = 0
-    if len(ch2ULongTerm) > 0:
-        ref = sum(ch2ULongTerm)/len(ch2ULongTerm)
+    global refU2
     ch2U = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = 0,
         domain = {'x': [0, 1], 'y': [0, 1]},
         title = {'text': "CH2 Voltage (V)"},
-        delta = {'reference': ref},
+        delta = {'reference': refU2},
         gauge = {'axis': {'range': [None, 60]},
                  'steps' : [
                     {"range": [0, 50], "color": "#04756F"},
@@ -268,6 +274,51 @@ def updateCh1Charge(n):
     var = html.H3(f"{formatted_charge} C")
     return var
 
+@callback(  Output('ch1I','reference'),  
+            Input('set_ref1', 'n_clicks'),
+            State('ch1I', 'figure'),
+            prevent_initial_call=True
+)
+def set_ref1I(n_clicks, value):
+    global refI1
+    if len(ch1ILongTerm) >= 0:
+        refI1 = sum(ch1ILongTerm)/len(ch1ILongTerm)
+    return refI1
+
+@callback(  Output('ch1U','reference'),
+            Input('set_ref1', 'n_clicks'),
+            State('ch1U', 'figure'),
+            prevent_initial_call=True
+)
+def set_ref1U(n_clicks, value):
+    global refU1
+    if len(ch1ULongTerm) >= 0:
+        refU1 = sum(ch1ULongTerm)/len(ch1ULongTerm)
+    return refU1
+    
+
+@callback(  Output('ch2I','reference'),
+            Input('set_ref2', 'n_clicks'),
+            State('ch2I', 'figure'),
+            prevent_initial_call=True
+)
+def set_ref2I(n_clicks, value):
+    global refI2
+    if len(ch2ILongTerm) >= 0:
+        refI2 = sum(ch2ILongTerm)/len(ch2ILongTerm)
+    return refI2
+
+@callback(  Output('ch2U','reference'),
+            Input('set_ref2', 'n_clicks'),
+            State('ch2U', 'figure'),
+            prevent_initial_call=True
+)
+def set_ref2U(n_clicks, value):
+    global refU2
+    if len(ch2ULongTerm) >= 0:
+        refU2 = sum(ch2ULongTerm)/len(ch2ULongTerm)
+    return refU2
+
 def main(argv):
     #get port number, ch1_en, ch1_polarity, ch1_pwmFreq, ch1_pwmDuty, ch2_en, ch2_polarity, ch2_pwmFreq, ch2_pwmDuty, sampleFreq
     try:
@@ -282,7 +333,7 @@ def main(argv):
         parser.add_argument('-1d', '--ch1_pwmDuty', help='Channel 1 PWM Duty', type=int, required=False, default=0)
         parser.add_argument('-2d', '--ch2_pwmDuty', help='Channel 2 PWM Duty', type=int, required=False, default=0)
         parser.add_argument('-fs', '--sampleFreq', help='Sampling Frequency', type=int, required=False, default=0)
-        parser.add_argument('-o', '--output', help='CSV output file', required=False, default='received_data.csv')
+        parser.add_argument('-o', '--output', help='CSV output file', required=False, default=None)
 
         args = parser.parse_args()
     except argparse.ArgumentError:
@@ -320,15 +371,17 @@ def main(argv):
     app.layout = html.Div([
     html.Div([
         dcc.Graph(id='ch1I'),
-        dcc.Graph(id='ch2I'),
+        dcc.Graph(id='ch1U'),
         html.H4(children='CH1 Total Charge (C)',style={'color': '#FF8C00', 'font-family': 'sans-serif', 'text-align': 'center'}),
         html.H3(id='ch1C',style={'color': '#FF8C00', 'font-family': 'sans-serif', 'text-align': 'center'}),
+        html.Button('Set reference', id='set_ref1', n_clicks=0, style={'text-align': 'center', 'display': 'block', 'margin': 'auto', 'width': '50%'}),
     ], style={'display': 'inline-block', 'width': '50%'}),  # First row with two graphs side by side
     html.Div([
-        dcc.Graph(id='ch1U'),
+        dcc.Graph(id='ch2I'),
         dcc.Graph(id='ch2U'),
-        html.H4(children='CH1 Total Charge (C)',style={'color': '#FF8C00', 'font-family': 'sans-serif', 'text-align': 'center'}),
+        html.H4(children='CH2 Total Charge (C)',style={'color': '#FF8C00', 'font-family': 'sans-serif', 'text-align': 'center'}),
         html.H3(id='ch2C',style={'color': '#FF8C00', 'font-family': 'sans-serif', 'text-align': 'center'}),
+        html.Button('Set reference', id='set_ref2', n_clicks=0, style={'text-align': 'center', 'display': 'block', 'margin': 'auto', 'width': '50%'}),
     ], style={'display': 'inline-block', 'width': '50%'}),  # Second row with two graphs side by side
     dcc.Interval(
         id='interval-component',
@@ -336,6 +389,16 @@ def main(argv):
         n_intervals=0
     )
     ])
+    
+    #if file exists, rename it
+    if args.output:
+        try:
+            with open(args.output, 'r') as f:
+                pass
+            import os
+            args.output = f"{args.output.split('.')[0]}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.csv"
+        except FileNotFoundError:
+            pass
     
     
     # Continuously read data
@@ -345,7 +408,7 @@ def main(argv):
         csvfile = None
 
     # Create a thread for reading data from the serial port
-    serial_thread = threading.Thread(target=readAndSaveData, args=(ser, csvfile,start_time, args.sampleFreq))
+    serial_thread = threading.Thread(target=readAndSaveData, args=(ser, csvfile,start_time, args))
     serial_thread.start()
     
     

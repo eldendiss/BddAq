@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 Connect BDD board using UART and run the app using commandline
 ```
-__main__.py -p COM11 -1 0 -2 1 -1p 2000 -2p 4 -1f 1 -2f 100 -1d 50 -2d 50 -fs 7000 -o data.csv 
+python __main__.py -p COM11 -1 0 -2 1 -1p 2000 -2p 4 -1f 1 -2f 100 -1d 50 -2d 50 -fs 7000 -o data.csv 
 ```
 
 **REQUIRED command line parameters**
