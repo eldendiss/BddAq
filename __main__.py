@@ -117,7 +117,7 @@ def create_packet(ch1_en, ch1_polarity, ch1_pwmFreq, ch1_pwmDuty, ch2_en, ch2_po
 
     return packet
 
-def readAndSaveData(ser, csvfile,start_time, args):
+def readAndSaveData(ser, csvfile,start_time, args, kill):
     global ch1charge, ch2charge
     
     if csvfile is not None:
@@ -129,6 +129,8 @@ def readAndSaveData(ser, csvfile,start_time, args):
 
     try:
         while True:
+            if(kill):
+                return
             packet = read_packet(ser)
             if packet and is_packet_valid(packet[:-1]):  # Exclude newline from CRC check
                 ch1_current = convert_current(combine_bytes(packet[0], packet[1]))
@@ -320,6 +322,7 @@ def set_ref2U(n_clicks, value):
     return refU2
 
 def main(argv):
+    kill = False
     #get port number, ch1_en, ch1_polarity, ch1_pwmFreq, ch1_pwmDuty, ch2_en, ch2_polarity, ch2_pwmFreq, ch2_pwmDuty, sampleFreq
     try:
         parser = argparse.ArgumentParser(description='Process packet parameters.')
@@ -408,7 +411,7 @@ def main(argv):
         csvfile = None
 
     # Create a thread for reading data from the serial port
-    serial_thread = threading.Thread(target=readAndSaveData, args=(ser, csvfile,start_time, args))
+    serial_thread = threading.Thread(target=readAndSaveData, args=(ser, csvfile,start_time, args, kill))
     serial_thread.start()
     
     
@@ -424,7 +427,10 @@ def main(argv):
         ser.close()
         if csvfile is not None:
             csvfile.close()
-        exit()
+        #destroy serial thread
+        kill = True
+        import os
+        os._exit(0)
             
 if __name__ == "__main__":
     main(sys.argv[1:])
